@@ -21,6 +21,15 @@ import luigi.format
 import datetime
 import re
 
+class HadoopVersion():
+    _VERSION = None
+    @classmethod
+    def get(cls):
+        """Returns hadoop version number as a string."""
+        if cls._VERSION is None:
+            hadoop_version = subprocess.check_output(['hadoop', 'version'])
+            cls._VERSION = hadoop_version.split('\n')[0].split(' ')[1].strip()
+        return cls._VERSION
 
 class HDFSCliError(Exception):
     def __init__(self, command, returncode, stdout, stderr):
@@ -63,19 +72,24 @@ class HdfsClient(object):
         is no good way of distinguishing file non-existence of files
         from errors when running the comman (same return code)
         """
-
-        cmd = ['hadoop', 'fs', '-ls', '-d', path]
+        if HadoopVersion.get() == '1.0.4':
+          cmd = ['hadoop', 'fs', '-test', '-e', path]
+        else:
+          cmd = ['hadoop', 'fs', '-ls', '-d', path ]
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         if p.returncode == 0:
             return True
         else:
-            not_found_pattern = "^ls: `.*': No such file or directory$"
-            not_found_re = re.compile(not_found_pattern)
-            for line in stderr.split('\n'):
-                if not_found_re.match(line):
-                    return False
-            raise HDFSCliError(cmd, p.returncode, stdout, stderr)
+            if HadoopVersion.get() == '1.0.4':
+                return False
+            else:
+                not_found_pattern = "^ls: `.*': No such file or directory$"
+                not_found_re = re.compile(not_found_pattern)
+                for line in stderr.split('\n'):
+                    if not_found_re.match(line):
+                        return False
+                raise HDFSCliError(cmd, p.returncode, stdout, stderr)
 
     def rename(self, path, dest):
         parent_dir = os.path.dirname(dest)
